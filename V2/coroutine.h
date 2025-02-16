@@ -69,6 +69,10 @@ void coroutine_sleep_read(unsigned int fd);
 // treat this function as a flavor of coroutine_yield().
 void coroutine_sleep_write(unsigned int fd);
 
+// Wake up coroutine by id if it is currently sleeping due to
+// coroutine_sleep_read() or coroutine_sleep_write() calls.
+void coroutine_wake_up(size_t id);
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

@@ -3,14 +3,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#define thread_local _Thread_local
 
-#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
 #define NOMINMAX
-#endif
 #include <WinSock2.h>
 #include <Windows.h>
 
@@ -81,12 +76,13 @@ typedef struct {
 	size_t capacity;
 } Polls;
 
-static thread_local size_t current = 0;
-static thread_local Indices active = {0};
-static thread_local Indices dead = {0};
-static thread_local Contexts contexts = {0};
-static thread_local Indices asleep = {0};
-static thread_local Polls polls = {0};
+// TODO: coroutines library probably does not work well in multithreaded environment
+static size_t current = 0;
+static Indices active = {0};
+static Indices dead = {0};
+static Contexts contexts = {0};
+static Indices asleep = {0};
+static Polls polls = {0};
 
 typedef enum {
 	SM_NONE = 0,
@@ -284,4 +280,16 @@ size_t coroutine_id(void) {
 
 size_t coroutine_alive(void) {
 	return active.count;
+}
+
+void coroutine_wake_up(size_t id) {
+	// @speed coroutine_wake_up is linear
+	for (size_t i = 0; i < asleep.count; ++i) {
+		if (asleep.items[i] == id) {
+			da_remove_unordered(&asleep, id);
+			da_remove_unordered(&polls, id);
+			da_append(&active, id);
+			return;
+		}
+	}
 }
