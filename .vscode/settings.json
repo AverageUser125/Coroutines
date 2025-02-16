@@ -5,6 +5,7 @@
         "assert.h": "c",
         "stdlib.h": "c",
         "stdbool.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "coroutine.c": "cpp"
     }
 }
