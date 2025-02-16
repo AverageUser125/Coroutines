@@ -3,11 +3,13 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <Windows.h>
-
-void coroutine__finish_current(void);
 
 // Initial capacity of a dynamic array
 #define DA_INIT_CAP 16
@@ -103,7 +105,7 @@ void coroutine_init(void) {
 	da_append(&contexts, (Context){0});
 }
 
-void coroutine__finish_current(void) {
+static void coroutine__finish_current(void) {
 	// TODO: free the stack of finished coroutine
 	// TODO: by removing elements from the contexts array we invalidate ids
 	if (contexts.current == 0) {
