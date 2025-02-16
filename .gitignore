@@ -25,4 +25,5 @@ Makefile
 *.extensions
 *.obj
 *.o
+*.exe
 DebugWorkshop/
