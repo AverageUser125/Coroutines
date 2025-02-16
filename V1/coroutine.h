@@ -1,5 +1,6 @@
 #ifndef COROUTINE_H_
 #define COROUTINE_H_
+#include <stdint.h>
 void coroutine_init(void);
 void coroutine_finish(void);
 void coroutine_yield(void);
