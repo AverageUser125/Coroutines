@@ -4,13 +4,14 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <WinSock2.h>
 #include <Windows.h>
 
 #include "coroutine.h"
 
 // TODO: make the STACK_CAPACITY customizable by the user
-//#define STACK_CAPACITY (4*1024)
 #define PAGE_SIZE 4096
 #define STACK_CAPACITY (1024 * 4096)
 
@@ -33,9 +34,11 @@
 
 #define da_remove_unordered(da, i)                                                                                     \
 	do {                                                                                                               \
-		size_t j = (i);                                                                                                \
-		assert(j < (da)->count);                                                                                       \
-		(da)->items[j] = (da)->items[--(da)->count];                                                                   \
+		assert((i) < (da)->count);                                                                                     \
+		if ((i) != (da)->count - 1) {                                                                                  \
+			(da)->items[(i)] = (da)->items[(da)->count - 1];                                                           \
+		}                                                                                                              \
+		(da)->count--;                                                                                                 \
 	} while (0)
 
 #define UNUSED(x) (void)(x)
@@ -80,9 +83,6 @@ static Indices dead = {0};
 static Contexts contexts = {0};
 static Indices asleep = {0};
 static Polls polls = {0};
-
-// TODO: ARM support
-//   Requires modifications in all the @arch places
 
 typedef enum {
 	SM_NONE = 0,
@@ -184,6 +184,7 @@ __attribute__((unused)) void coroutine_switch_context(void* rsp, Sleep_Mode sm, 
 		current += 1;
 		break;
 	case SM_READ: {
+		assert(fd != SOCKET_ERROR);
 		da_append(&asleep, active.items[current]);
 		struct pollfd pfd = {
 			.fd = fd,
@@ -194,6 +195,7 @@ __attribute__((unused)) void coroutine_switch_context(void* rsp, Sleep_Mode sm, 
 	} break;
 
 	case SM_WRITE: {
+		assert(fd != SOCKET_ERROR);
 		da_append(&asleep, active.items[current]);
 		struct pollfd pfd = {
 			.fd = fd,
@@ -246,7 +248,7 @@ void coroutine_go(void (*f)(void*), void* arg) {
 		id = contexts.count - 1;
 
 		contexts.items[id].stack_base =
-			(void*)(VirtualAlloc(NULL, STACK_CAPACITY + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			(void*)(VirtualAlloc(NULL, STACK_CAPACITY + PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 		assert(contexts.items[id].stack_base != NULL);
 	}
 
