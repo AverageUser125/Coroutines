@@ -1,0 +1,28 @@
+# Visual Studio stuff
+/.vs
+build/
+bin/
+/out
+.idea/
+Makefile
+/*.user
+.localhistory/
+.vshistory/
+
+# Visual Studio Code stuff
+.history/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# other
+*.txt
+!config.txt
+*.user
+*.extensions
+*.obj
+*.o
+DebugWorkshop/
