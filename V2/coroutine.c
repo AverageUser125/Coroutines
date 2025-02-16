@@ -293,3 +293,39 @@ void coroutine_wake_up(size_t id) {
 		}
 	}
 }
+
+void coroutine_destroy() {
+	if (active.items[current] != 0) {
+		UNREACHABLE("Must be called from main routine");
+	}
+
+	free(active.items);
+	active.items = NULL;
+	active.capacity = 0;
+	active.count = 0;
+
+	free(dead.items);
+	dead.items = NULL;
+	dead.capacity = 0;
+	dead.count = 0;
+
+	free(asleep.items);
+	asleep.items = NULL;
+	asleep.capacity = 0;
+	asleep.count = 0;
+
+	free(polls.items);
+	polls.items = NULL;
+	polls.capacity = 0;
+	polls.count = 0;
+
+	for (size_t i = 1; i < contexts.count; i++) {
+		BOOLEAN result = VirtualFree(contexts.items[i].stack_base, 0, MEM_RELEASE);
+		assert(result != 0);
+	}
+
+	free(contexts.items);
+	contexts.items = NULL;
+	contexts.capacity = 0;
+	contexts.count = 0;
+}

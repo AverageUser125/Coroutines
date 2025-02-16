@@ -73,6 +73,9 @@ void coroutine_sleep_write(unsigned int fd);
 // coroutine_sleep_read() or coroutine_sleep_write() calls.
 void coroutine_wake_up(size_t id);
 
+// Destroys all coroutines
+void coroutine_destroy();
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

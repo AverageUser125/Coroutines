@@ -2,7 +2,7 @@
 #define COROUTINE_H_
 #include <stdint.h>
 void coroutine_init(void);
-void coroutine_finish(void);
+void coroutine_destroy();
 void coroutine_yield(void);
 void coroutine_go(void (*f)(void*), void* arg);
 size_t coroutine_id(void);

@@ -1,11 +1,13 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
 
+void coroutine__finish_current(void);
 
 // Initial capacity of a dynamic array
 #define DA_INIT_CAP 16
@@ -101,7 +103,7 @@ void coroutine_init(void) {
 	da_append(&contexts, (Context){0});
 }
 
-void coroutine_finish(void) {
+void coroutine__finish_current(void) {
 	// TODO: free the stack of finished coroutine
 	// TODO: by removing elements from the contexts array we invalidate ids
 	if (contexts.current == 0) {
@@ -124,9 +126,9 @@ void coroutine_go(void (*f)(void*), void* arg) {
 	assert(stack_base != NULL && "Buy more RAM lol");
 	void** rsp = (void**)((char*)stack_base + STACK_CAPACITY);
 
-	*(--rsp) = &coroutine_finish; // Return address for when coroutine finishes
-	*(--rsp) = f;				  // Function to call
-	*(--rsp) = arg;				  // Argument for function (first parameter)
+	*(--rsp) = coroutine__finish_current; // Return address for when coroutine finishes
+	*(--rsp) = f;						  // Function to call
+	*(--rsp) = arg;						  // Argument for function (first parameter)
 
 	// Save callee-saved registers (those that need to be preserved across function calls)
 	*(--rsp) = 0; // "    popq %r15\n"
@@ -154,4 +156,20 @@ size_t coroutine_id(void) {
 
 size_t coroutine_alive(void) {
 	return contexts.count;
+}
+
+void coroutine_destroy() {
+	if (contexts.current != 0) {
+		UNREACHABLE("Must be called from main routine");
+	}
+
+	for (size_t i = 1; i < contexts.count; i++) {
+		BOOLEAN result = VirtualFree(contexts.items[i].stack_base, 0, MEM_RELEASE);
+		assert(result != 0);
+	}
+
+	free(contexts.items);
+	contexts.items = NULL;
+	contexts.capacity = 0;
+	contexts.count = 0;
 }

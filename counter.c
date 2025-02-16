@@ -22,6 +22,6 @@ int main() {
 	coroutine_go(&counter, (void*)10);
 	while (coroutine_alive() > 1)
 		coroutine_yield();
-	coroutine_finish();
+	coroutine_destroy();
 	return 0;
 }
