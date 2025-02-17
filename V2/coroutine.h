@@ -74,6 +74,8 @@ void coroutine_sleep_write(unsigned int fd);
 void coroutine_wake_up(size_t id);
 
 // Destroys all coroutines
+// There is no need to call at end of main coroutine unless you plan to call
+// coroutine_init again in the future
 void coroutine_destroy();
 
 #ifdef __cplusplus

@@ -11,22 +11,15 @@
 #define PORT 12345
 #define BUF_SIZE 1024
 
-//Returns the last Win32 error, in string format. Returns an empty string if there is no error.
-char* GetLastErrorAsString() {
+void PrintLastError(const char* msg) {
 	DWORD errorMessageID = GetLastError();
-	if (errorMessageID == 0) {
-		return NULL; //No error message has been recorded
-	}
-
 	LPSTR messageBuffer = NULL;
-
-	//Ask Win32 to give us the string version of that message ID.
-	//The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
 	size_t size =
 		FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 					   NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
 
-	return messageBuffer;
+	printf("%s: %s\n", msg, messageBuffer);
+	LocalFree(messageBuffer);
 }
 
 // Coroutine to handle communication with a client
@@ -49,13 +42,10 @@ void client_coroutine(void* arg) {
 			printf("Client [%d] Disconnected\n", coroutine_id());
 			break;
 		} else {
-			char* err = GetLastErrorAsString();
-			fprintf(stderr, "Recv failed: %s\n", err);
-			LocalFree(err);
+			PrintLastError("Recv failed");
 			break;
 		}
 	}
-
 	closesocket(clientSocket);
 }
 
@@ -93,9 +83,7 @@ int main() {
 		coroutine_sleep_read(serverSocket);
 		SOCKET clientSocket = accept(serverSocket, NULL, NULL);
 		if (clientSocket == INVALID_SOCKET) {
-			char* err = GetLastErrorAsString();
-			fprintf(stderr, "Accept failed: %s\n", err);
-			LocalFree(err);
+			PrintLastError("Accept failed");
 			continue;
 		}
 
