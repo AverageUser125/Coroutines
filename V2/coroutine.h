@@ -45,6 +45,7 @@ void coroutine_yield(void);
 // execution of the new coroutine will start as soon as the scheduler gets to it
 // handling the chains of coroutine_yield()-s.
 void coroutine_go(void (*f)(void*), void* arg);
+void coroutine_goEX(void (*f)(), int argc, void** argv);
 
 // The id of the current coroutine.
 size_t coroutine_id(void);

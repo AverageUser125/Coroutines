@@ -151,7 +151,6 @@ static void __attribute__((naked)) coroutine_restore_context(void* rsp) {
 		"    popq %rsi\n"
 		"    popq %rdi\n"
 		"    popq %rbp\n"
-
 		"    popq %r9\n"
 		"    popq %r8\n"
 		"    popq %rdx\n"
@@ -243,6 +242,44 @@ static void coroutine__finish_current(void) {
 	coroutine_restore_context(contexts.items[active.items[current]].rsp);
 }
 
+void coroutine_goEX(void (*f)(), int argc, void** argv) {
+	assert(argc >= 0 && argc <= 4);
+
+	size_t id;
+	if (dead.count > 0) {
+		id = dead.items[--dead.count];
+	} else {
+		da_append(&contexts, ((Context){0}));
+		id = contexts.count - 1;
+
+		contexts.items[id].stack_base =
+			(void*)(VirtualAlloc(NULL, STACK_CAPACITY + PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+		assert(contexts.items[id].stack_base != NULL);
+	}
+
+	void** rsp = (void**)((char*)contexts.items[id].stack_base + STACK_CAPACITY);
+
+	// @arch
+	*(--rsp) = coroutine__finish_current;
+	*(--rsp) = (void*)f;
+	*(--rsp) = (argc > 0) ? argv[0] : NULL; // RCX
+	*(--rsp) = (argc > 1) ? argv[1] : NULL; // RDX
+	*(--rsp) = (argc > 2) ? argv[2] : NULL; // R8
+	*(--rsp) = (argc > 3) ? argv[3] : NULL; // R9
+	*(--rsp) = 0;							// RBP
+	*(--rsp) = 0;							// RDI
+	*(--rsp) = 0;							// RSI
+	*(--rsp) = 0;							// RBX
+	*(--rsp) = 0;							// R12
+	*(--rsp) = 0;							// R13
+	*(--rsp) = 0;							// R14
+	*(--rsp) = 0;							// R15
+
+	contexts.items[id].rsp = rsp;
+
+	da_append(&active, id);
+}
+
 void coroutine_go(void (*f)(void*), void* arg) {
 	size_t id;
 	if (dead.count > 0) {
@@ -257,21 +294,22 @@ void coroutine_go(void (*f)(void*), void* arg) {
 	}
 
 	void** rsp = (void**)((char*)contexts.items[id].stack_base + STACK_CAPACITY);
+
 	// @arch
 	*(--rsp) = coroutine__finish_current;
-	*(--rsp) = f;
-	*(--rsp) = arg; // pushq %rcx
-	*(--rsp) == 0;	// pushq %rdx
-	*(--rsp) == 0;	// pushq %r8
-	*(--rsp) == 0;	// pushq %r9
-	*(--rsp) == 0;	// pushq %rbp
-	*(--rsp) == 0;	// pushq %rdi
-	*(--rsp) == 0;	// pushq %rsi
-	*(--rsp) == 0;	// pushq %rbx
-	*(--rsp) == 0;	// pushq %r12
-	*(--rsp) == 0;	// pushq %r13
-	*(--rsp) == 0;	// pushq %r14
-	*(--rsp) == 0;	// pushq %r15
+	*(--rsp) = (void*)f;
+	*(--rsp) = arg; // RCX
+	*(--rsp) = 0;	// RDX
+	*(--rsp) = 0;	// R8
+	*(--rsp) = 0;	// R9
+	*(--rsp) = 0;	// RBP
+	*(--rsp) = 0;	// RDI
+	*(--rsp) = 0;	// RSI
+	*(--rsp) = 0;	// RBX
+	*(--rsp) = 0;	// R12
+	*(--rsp) = 0;	// R13
+	*(--rsp) = 0;	// R14
+	*(--rsp) = 0;	// R15
 
 	contexts.items[id].rsp = rsp;
 
