@@ -10,7 +10,6 @@ void coroutine_init(void);
 void coroutine_destroy();
 void coroutine_yield(void);
 void coroutine_go(void (*f)(void*), void* arg);
-void coroutine_goEX(void (*f)(), int argc, void** argv);
 size_t coroutine_id(void);
 size_t coroutine_alive(void);
 

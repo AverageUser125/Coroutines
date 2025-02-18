@@ -61,10 +61,6 @@ void coroutine_switch_context(void* rsp);
 void __attribute__((naked)) coroutine_yield(void) {
 
 	asm("    pushq %rcx\n"
-		"    pushq %rdx\n"
-		"    pushq %r8\n"
-		"    pushq %r9\n"
-
 		"    pushq %rbp\n"
 		"    pushq %rdi\n"
 		"    pushq %rsi\n"
@@ -88,9 +84,6 @@ void __attribute__((naked)) coroutine_restore_context(void* rsp) {
 		"    popq %rsi\n"
 		"    popq %rdi\n"
 		"    popq %rbp\n"
-		"    popq %r9\n"
-		"    popq %r8\n"
-		"    popq %rdx\n"
 		"    popq %rcx\n"
 		"    ret\n");
 }
@@ -133,9 +126,6 @@ void coroutine_go(void (*f)(void*), void* arg) {
 	*(--rsp) = coroutine__finish_current; // Return address for when coroutine finishes
 	*(--rsp) = f;						  // Function to call
 	*(--rsp) = arg;						  // RCX
-	*(--rsp) = 0;						  // RDX
-	*(--rsp) = 0;						  // R8
-	*(--rsp) = 0;						  // R9
 	*(--rsp) = 0;						  // RBP
 	*(--rsp) = 0;						  // RDI
 	*(--rsp) = 0;						  // RSI
@@ -144,37 +134,6 @@ void coroutine_go(void (*f)(void*), void* arg) {
 	*(--rsp) = 0;						  // R13
 	*(--rsp) = 0;						  // R14
 	*(--rsp) = 0;						  // R15
-
-	da_append(&contexts, ((Context){
-							 .rsp = rsp,
-							 .stack_base = stack_base,
-						 }));
-}
-
-void coroutine_goEX(void (*f)(), int argc, void** argv) {
-	assert(argc >= 0 && argc <= 4);
-
-	void* stack_base =
-		(void*)(VirtualAlloc(NULL, STACK_CAPACITY + PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-	assert(stack_base != NULL && "Buy more RAM lol");
-
-	void** rsp = (void**)((char*)stack_base + STACK_CAPACITY);
-
-	// @arch
-	*(--rsp) = coroutine__finish_current;
-	*(--rsp) = (void*)f;
-	*(--rsp) = (argc > 0) ? argv[0] : NULL; // RCX
-	*(--rsp) = (argc > 1) ? argv[1] : NULL; // RDX
-	*(--rsp) = (argc > 2) ? argv[2] : NULL; // R8
-	*(--rsp) = (argc > 3) ? argv[3] : NULL; // R9
-	*(--rsp) = 0;							// RBP
-	*(--rsp) = 0;							// RDI
-	*(--rsp) = 0;							// RSI
-	*(--rsp) = 0;							// RBX
-	*(--rsp) = 0;							// R12
-	*(--rsp) = 0;							// R13
-	*(--rsp) = 0;							// R14
-	*(--rsp) = 0;							// R15
 
 	da_append(&contexts, ((Context){
 							 .rsp = rsp,

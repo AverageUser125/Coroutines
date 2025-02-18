@@ -45,6 +45,14 @@
 		(da)->count--;                                                                                                 \
 	} while (0)
 
+#define da_destroy(da)                                                                                                 \
+	do {                                                                                                               \
+		free((da)->items);                                                                                             \
+		(da)->items = NULL;                                                                                            \
+		(da)->count = 0;                                                                                               \
+		(da)->capacity = 0;                                                                                            \
+	} while (0)
+
 #define UNUSED(x) (void)(x)
 #define TODO(message)                                                                                                  \
 	do {                                                                                                               \
@@ -100,9 +108,6 @@ typedef enum {
 // @arch
 #define PUSHALL                                                                                                        \
 	"    pushq %rcx\n"                                                                                                 \
-	"    pushq %rdx\n"                                                                                                 \
-	"    pushq %r8\n"                                                                                                  \
-	"    pushq %r9\n"                                                                                                  \
 	"    pushq %rbp\n"                                                                                                 \
 	"    pushq %rdi\n"                                                                                                 \
 	"    pushq %rsi\n"                                                                                                 \
@@ -151,9 +156,6 @@ static void __attribute__((naked)) coroutine_restore_context(void* rsp) {
 		"    popq %rsi\n"
 		"    popq %rdi\n"
 		"    popq %rbp\n"
-		"    popq %r9\n"
-		"    popq %r8\n"
-		"    popq %rdx\n"
 		"    popq %rcx\n"
 		"    ret\n");
 }
@@ -242,44 +244,6 @@ static void coroutine__finish_current(void) {
 	coroutine_restore_context(contexts.items[active.items[current]].rsp);
 }
 
-void coroutine_goEX(void (*f)(), int argc, void** argv) {
-	assert(argc >= 0 && argc <= 4);
-
-	size_t id;
-	if (dead.count > 0) {
-		id = dead.items[--dead.count];
-	} else {
-		da_append(&contexts, ((Context){0}));
-		id = contexts.count - 1;
-
-		contexts.items[id].stack_base =
-			(void*)(VirtualAlloc(NULL, STACK_CAPACITY + PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-		assert(contexts.items[id].stack_base != NULL);
-	}
-
-	void** rsp = (void**)((char*)contexts.items[id].stack_base + STACK_CAPACITY);
-
-	// @arch
-	*(--rsp) = coroutine__finish_current;
-	*(--rsp) = (void*)f;
-	*(--rsp) = (argc > 0) ? argv[0] : NULL; // RCX
-	*(--rsp) = (argc > 1) ? argv[1] : NULL; // RDX
-	*(--rsp) = (argc > 2) ? argv[2] : NULL; // R8
-	*(--rsp) = (argc > 3) ? argv[3] : NULL; // R9
-	*(--rsp) = 0;							// RBP
-	*(--rsp) = 0;							// RDI
-	*(--rsp) = 0;							// RSI
-	*(--rsp) = 0;							// RBX
-	*(--rsp) = 0;							// R12
-	*(--rsp) = 0;							// R13
-	*(--rsp) = 0;							// R14
-	*(--rsp) = 0;							// R15
-
-	contexts.items[id].rsp = rsp;
-
-	da_append(&active, id);
-}
-
 void coroutine_go(void (*f)(void*), void* arg) {
 	size_t id;
 	if (dead.count > 0) {
@@ -299,9 +263,6 @@ void coroutine_go(void (*f)(void*), void* arg) {
 	*(--rsp) = coroutine__finish_current;
 	*(--rsp) = (void*)f;
 	*(--rsp) = arg; // RCX
-	*(--rsp) = 0;	// RDX
-	*(--rsp) = 0;	// R8
-	*(--rsp) = 0;	// R9
 	*(--rsp) = 0;	// RBP
 	*(--rsp) = 0;	// RDI
 	*(--rsp) = 0;	// RSI
@@ -341,33 +302,14 @@ void coroutine_destroy() {
 		UNREACHABLE("Must be called from main routine");
 	}
 
-	free(active.items);
-	active.items = NULL;
-	active.capacity = 0;
-	active.count = 0;
-
-	free(dead.items);
-	dead.items = NULL;
-	dead.capacity = 0;
-	dead.count = 0;
-
-	free(asleep.items);
-	asleep.items = NULL;
-	asleep.capacity = 0;
-	asleep.count = 0;
-
-	free(polls.items);
-	polls.items = NULL;
-	polls.capacity = 0;
-	polls.count = 0;
+	da_destroy(&active);
+	da_destroy(&dead);
+	da_destroy(&asleep);
+	da_destroy(&polls);
 
 	for (size_t i = 1; i < contexts.count; i++) {
 		BOOLEAN result = VirtualFree(contexts.items[i].stack_base, 0, MEM_RELEASE);
 		assert(result != 0);
 	}
-
-	free(contexts.items);
-	contexts.items = NULL;
-	contexts.capacity = 0;
-	contexts.count = 0;
+	da_destroy(&contexts);
 }
