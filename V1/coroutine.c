@@ -25,11 +25,12 @@
 		(da)->items[(da)->count++] = (item);                                                                           \
 	} while (0)
 
-#define da_remove_unordered(da, i)                                                                                     \
+#define da_destroy(da)                                                                                                 \
 	do {                                                                                                               \
-		size_t j = (i);                                                                                                \
-		assert(j < (da)->count);                                                                                       \
-		(da)->items[j] = (da)->items[--(da)->count];                                                                   \
+		free((da)->items);                                                                                             \
+		(da)->items = NULL;                                                                                            \
+		(da)->count = 0;                                                                                               \
+		(da)->capacity = 0;                                                                                            \
 	} while (0)
 
 #define PAGE_SIZE (4096)
@@ -59,7 +60,7 @@ Contexts contexts = {0};
 void coroutine_switch_context(void* rsp);
 
 void __attribute__((naked)) coroutine_yield(void) {
-
+	// @arch
 	asm("    pushq %rcx\n"
 		"    pushq %rbp\n"
 		"    pushq %rdi\n"
@@ -75,6 +76,7 @@ void __attribute__((naked)) coroutine_yield(void) {
 
 void __attribute__((naked)) coroutine_restore_context(void* rsp) {
 	UNUSED(rsp);
+	// @arch
 	asm("    movq %rcx, %rsp\n" // Restore the stack pointer from RCX (not RDI)
 		"    popq %r15\n"
 		"    popq %r14\n"
@@ -100,13 +102,9 @@ void coroutine_init(void) {
 }
 
 static void coroutine__finish_current(void) {
-	// TODO: free the stack of finished coroutine
-	// TODO: by removing elements from the contexts array we invalidate ids
 	if (contexts.current == 0) {
-		contexts.count = 0;
-		return;
+		UNREACHABLE("Main Coroutine with id == 0 should never reach this place");
 	}
-
 	// remove by swaping with the end and then reducing the size by 1,
 	Context t = contexts.items[contexts.current];
 	contexts.items[contexts.current] = contexts.items[contexts.count - 1];
@@ -159,8 +157,5 @@ void coroutine_destroy() {
 		assert(result != 0);
 	}
 
-	free(contexts.items);
-	contexts.items = NULL;
-	contexts.capacity = 0;
-	contexts.count = 0;
+	da_destroy(&contexts);
 }

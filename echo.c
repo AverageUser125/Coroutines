@@ -93,6 +93,7 @@ int main() {
 		coroutine_go(client_coroutine, (void*)(intptr_t)clientSocket);
 	}
 
+	coroutine_destroy();
 	closesocket(serverSocket);
 	WSACleanup();
 	return 0;

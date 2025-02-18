@@ -16,8 +16,8 @@
 #include "coroutine.h"
 
 // TODO: make the STACK_CAPACITY customizable by the user
-#define PAGE_SIZE 4096
-#define STACK_CAPACITY (1024 * 4096)
+#define PAGE_SIZE (4096)
+#define STACK_CAPACITY (1024 * PAGE_SIZE)
 
 // Initial capacity of a dynamic array
 #ifndef DA_INIT_CAP
@@ -221,7 +221,6 @@ __attribute__((unused)) void coroutine_switch_context(void* rsp, Sleep_Mode sm, 
 	coroutine_restore_context(contexts.items[active.items[current]].rsp);
 }
 
-// TODO: think how to get rid of coroutine_init() call at all
 void coroutine_init(void) {
 	if (contexts.count != 0)
 		return;
