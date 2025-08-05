@@ -1,10 +1,8 @@
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
-
+#include <iostream>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -23,13 +21,14 @@
 #define UNUSED(x) (void)(x)
 #define TODO(message)                                                                                                  \
 	do {                                                                                                               \
-		fprintf(stderr, "%s:%d: TODO: %s\n", __FILE__, __LINE__, message);                                             \
-		abort();                                                                                                       \
+		std::cerr << __FILE__ << ":" << __LINE__ << ": TODO: " << message << std::endl;                               \
+		std::abort();                                                                                                  \
 	} while (0)
+
 #define UNREACHABLE(message)                                                                                           \
 	do {                                                                                                               \
-		fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message);                                      \
-		abort();                                                                                                       \
+		std::cerr << __FILE__ << ":" << __LINE__ << ": UNREACHABLE: " << message << std::endl;                        \
+		std::abort();                                                                                                  \
 	} while (0)
 
 typedef struct {
@@ -118,7 +117,6 @@ void da_remove_unordered(std::vector<T>* da, int i) {
 }
 
 static void coroutine_update_sleeping() {
-	// @speed to activate a sleeping coroutine is linear
 	if (polls.empty()) {
 		return;
 	}
