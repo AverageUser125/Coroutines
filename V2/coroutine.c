@@ -162,21 +162,23 @@ static void __attribute__((naked)) coroutine_restore_context(void* rsp) {
 
 static void coroutine_update_sleeping() {
 	// @speed to activate a sleeping coroutine is linear
-	if (polls.count > 0) {
-		int timeout = active.count == 0 ? -1 : 0;
-		int result = WSAPoll(polls.items, polls.count, timeout);
-		if (result < 0)
-			TODO("poll");
+	if (polls.count == 0) {
+		return;
+	}
+	int timeout = active.count == 0 ? -1 : 0;
+	int result = WSAPoll(polls.items, polls.count, timeout);
+	if (result < 0)
+		TODO("poll");
 
-		for (size_t i = 0; i < polls.count;) {
-			if (polls.items[i].revents) {
-				size_t id = asleep.items[i];
-				da_remove_unordered(&polls, i);
-				da_remove_unordered(&asleep, i);
-				da_append(&active, id);
-			} else {
-				++i;
-			}
+	if (polls.count == 0) {
+		return;
+	}
+	for (int i = polls.count - 1; i >= 0; --i) {
+		if (polls.items[i].revents) {
+			size_t id = asleep.items[i];
+			da_remove_unordered(&polls, i);
+			da_remove_unordered(&asleep, i);
+			da_append(&active, id);
 		}
 	}
 }
@@ -288,8 +290,8 @@ void coroutine_wake_up(size_t id) {
 	// @speed coroutine_wake_up is linear
 	for (size_t i = 0; i < asleep.count; ++i) {
 		if (asleep.items[i] == id) {
-			da_remove_unordered(&asleep, id);
-			da_remove_unordered(&polls, id);
+			da_remove_unordered(&asleep, i);
+			da_remove_unordered(&polls, i);
 			da_append(&active, id);
 			return;
 		}
