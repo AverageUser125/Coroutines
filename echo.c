@@ -1,100 +1,161 @@
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 
+#include "coroutine.h"
+#include "coroutine.c"
 
-#include "V2/coroutine.h"
-#include "V2/coroutine.c"
+#pragma comment(lib, "ws2_32.lib")
 
 #define PORT 12345
 #define BUF_SIZE 1024
+#define MAX_CLIENTS 512
 
-void PrintLastError(const char* msg) {
-	DWORD errorMessageID = GetLastError();
-	LPSTR messageBuffer = NULL;
-	size_t size =
-		FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-					   NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+static Stack *g_stack = NULL;
 
-	printf("%s: %s\n", msg, messageBuffer);
-	LocalFree(messageBuffer);
+/* Poll arrays */
+static WSAPOLLFD pollfds[MAX_CLIENTS + 1];
+static Coroutine *coros[MAX_CLIENTS + 1];
+static int poll_count = 0; /* includes server socket at index 0 */
+
+/* ----------------------------------------------------------- */
+
+static void PrintLastError(const char *msg) {
+    DWORD id = GetLastError();
+    LPSTR buf = NULL;
+    FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, id,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPSTR)&buf, 0, NULL
+    );
+    printf("%s: %s\n", msg, buf);
+    LocalFree(buf);
 }
 
-// Coroutine to handle communication with a client
-void client_coroutine(void* arg) {
-	SOCKET clientSocket = (SOCKET)(intptr_t)arg;
-	char buffer[BUF_SIZE];
-	int bytesReceived;
+/* -----------------------------------------------------------
+   CLIENT COROUTINE
+   ----------------------------------------------------------- */
+static void client_coroutine(Stack *stack, void *arg) {
+    SOCKET s = (SOCKET)(intptr_t)arg;
+    char buf[BUF_SIZE];
 
-	printf("New Client [%d], [%d]\n", coroutine_id(), clientSocket);
-	while (1) {
-		coroutine_sleep_read(clientSocket);
-		bytesReceived = recv(clientSocket, buffer, BUF_SIZE, 0);
+    for (;;) {
+        int r = recv(s, buf, sizeof(buf), 0);
+        if (r > 0) {
+            send(s, buf, r, 0);
+        } else if (r == 0) {
+            /* disconnect */
+            break;
+        } else {
+            PrintLastError("recv");
+            break;
+        }
 
-		if (bytesReceived > 0) {
-			printf("Client [%d], recieved [%d] bytes\n", coroutine_id(), bytesReceived);
+        /* allow scheduler to resume others */
+        coroutine_yield(stack);
+    }
 
-			coroutine_sleep_write(clientSocket);
-			send(clientSocket, buffer, bytesReceived, 0);
-		} else if (bytesReceived == 0) {
-			printf("Client [%d] Disconnected\n", coroutine_id());
-			break;
-		} else {
-			PrintLastError("Recv failed");
-			break;
-		}
-	}
-	closesocket(clientSocket);
+    closesocket(s);
 }
 
-int main() {
-	// Initialize Winsock
-	{
-		WSADATA wsaData;
-		int wsaResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-		assert(wsaResult == 0);
-	}
+/* -----------------------------------------------------------
+   REMOVE CLIENT ENTRY
+   ----------------------------------------------------------- */
+static void remove_client(int index) {
+    /* index is in pollfds/coros */
 
-	SOCKET serverSocket;
-	// create a listening non-blocking socket on port 12345
-	{
-		serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		assert(serverSocket != INVALID_SOCKET);
+    /* destroy coroutine */
+    coroutine_destroy(coros[index]);
 
-		struct sockaddr_in serverAddr;
-		serverAddr.sin_family = AF_INET;
-		serverAddr.sin_addr.s_addr = INADDR_ANY;
-		serverAddr.sin_port = htons(PORT);
+    /* remove socket from poll array */
+    pollfds[index] = pollfds[poll_count - 1];
+    coros[index]    = coros[poll_count - 1];
 
-		int bindResult = bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
-		assert(bindResult != SOCKET_ERROR);
+    poll_count--;
+}
 
-		u_long mode = 1; // Non-blocking mode
-		ioctlsocket(serverSocket, FIONBIO, &mode);
+/* -----------------------------------------------------------
+   MAIN
+   ----------------------------------------------------------- */
+int main(void) {
+    /* winsock */
+    {
+        WSADATA w;
+        assert(WSAStartup(MAKEWORD(2,2), &w) == 0);
+    }
 
-		int listenResult = listen(serverSocket, SOMAXCONN);
-		assert(listenResult != SOCKET_ERROR);
-	}
+    /* server socket */
+    SOCKET serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    assert(serv != INVALID_SOCKET);
 
-	coroutine_init();
-	while (1) {
-		coroutine_sleep_read(serverSocket);
-		SOCKET clientSocket = accept(serverSocket, NULL, NULL);
-		if (clientSocket == INVALID_SOCKET) {
-			PrintLastError("Accept failed");
-			continue;
-		}
+    {
+        struct sockaddr_in a;
+        a.sin_family = AF_INET;
+        a.sin_addr.s_addr = INADDR_ANY;
+        a.sin_port = htons(PORT);
 
-		u_long mode = 1;
-		ioctlsocket(clientSocket, FIONBIO, &mode);
+        assert(bind(serv, (struct sockaddr*)&a, sizeof(a)) != SOCKET_ERROR);
+        assert(listen(serv, SOMAXCONN) != SOCKET_ERROR);
 
-		coroutine_go(client_coroutine, (void*)(intptr_t)clientSocket);
-	}
+        u_long mode = 1;
+        ioctlsocket(serv, FIONBIO, &mode);
+    }
+    /* coroutine stack */
+    g_stack = coroutine_init();
+    assert(g_stack);
 
-	coroutine_destroy();
-	closesocket(serverSocket);
-	WSACleanup();
-	return 0;
+    /* setup poll list */
+    pollfds[0].fd = serv;
+    pollfds[0].events = POLLRDNORM;
+    coros[0] = NULL; /* server has no coroutine */
+    poll_count = 1;
+
+    /* event loop */
+    for (;;) {
+        int r = WSAPoll(pollfds, poll_count, -1);
+        if (r == SOCKET_ERROR) {
+            PrintLastError("WSAPoll");
+            continue;
+        }
+
+        /* SERVER READY? */
+        if (pollfds[0].revents & POLLRDNORM) {
+            SOCKET c = accept(serv, NULL, NULL);
+            if (c == INVALID_SOCKET) {
+                PrintLastError("accept");
+            } else {
+                u_long m = 1;
+                ioctlsocket(c, FIONBIO, &m);
+				
+                if (poll_count < MAX_CLIENTS + 1) {
+                    pollfds[poll_count].fd = c;
+                    pollfds[poll_count].events = POLLRDNORM;
+                    coros[poll_count] = coroutine_create(g_stack, client_coroutine, (void*)(intptr_t)c);
+                    poll_count++;
+                } else {
+                    closesocket(c);
+                }
+            }
+        }
+
+        /* CLIENTS READY */
+        int i = 1;
+        while (i < poll_count) {
+            if (pollfds[i].revents & POLLRDNORM) {
+                Coroutine *co = coros[i];
+                coroutine_resume(g_stack, co);
+
+                if (co->finished) {
+                    remove_client(i);
+                    continue; /* do not increment i (array shifted) */
+                }
+            }
+            i++;
+        }
+    }
+
+    return 0;
 }
