@@ -60,7 +60,33 @@ static void client_coroutine(Stack *stack, void *arg) {
 
     closesocket(s);
 }
+/* -----------------------------------------------------------
+   ACCEPT COROUTINE
+   ----------------------------------------------------------- */
+static void accept_coroutine(Stack *stack, void *arg) {
+    SOCKET serv = (SOCKET)(intptr_t)arg;
 
+    for (;;) {
+		SOCKET c = accept(serv, NULL, NULL);
+		if (c == INVALID_SOCKET) {
+			PrintLastError("accept");
+		} else {
+			u_long mode = 1;
+			ioctlsocket(c, FIONBIO, &mode);
+
+			if (poll_count < MAX_CLIENTS + 1) {
+				pollfds[poll_count].fd = c;
+				pollfds[poll_count].events = POLLRDNORM;
+				coros[poll_count++] = coroutine_create(g_stack, client_coroutine, (void*)(intptr_t)c);
+			} else {
+				closesocket(c);
+			} 
+        }
+
+        /* yield back to scheduler */
+        coroutine_yield(stack);
+    }
+}
 /* -----------------------------------------------------------
    REMOVE CLIENT ENTRY
    ----------------------------------------------------------- */
@@ -111,8 +137,9 @@ int main(void) {
     pollfds[0].fd = serv;
     pollfds[0].events = POLLRDNORM;
     coros[0] = NULL; /* server has no coroutine */
-    poll_count = 1;
+    poll_count = 0;
 
+	coros[poll_count++] = coroutine_create(g_stack, accept_coroutine, (void*)(intptr_t)serv);
     /* event loop */
     for (;;) {
         int r = WSAPoll(pollfds, poll_count, -1);
@@ -120,29 +147,8 @@ int main(void) {
             PrintLastError("WSAPoll");
             continue;
         }
-
-        /* SERVER READY? */
-        if (pollfds[0].revents & POLLRDNORM) {
-            SOCKET c = accept(serv, NULL, NULL);
-            if (c == INVALID_SOCKET) {
-                PrintLastError("accept");
-            } else {
-                u_long m = 1;
-                ioctlsocket(c, FIONBIO, &m);
-				
-                if (poll_count < MAX_CLIENTS + 1) {
-                    pollfds[poll_count].fd = c;
-                    pollfds[poll_count].events = POLLRDNORM;
-                    coros[poll_count] = coroutine_create(g_stack, client_coroutine, (void*)(intptr_t)c);
-                    poll_count++;
-                } else {
-                    closesocket(c);
-                }
-            }
-        }
-
         /* CLIENTS READY */
-        int i = 1;
+        int i = 0;
         while (i < poll_count) {
             if (pollfds[i].revents & POLLRDNORM) {
                 Coroutine *co = coros[i];

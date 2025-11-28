@@ -18,6 +18,7 @@
         (da)->items[(da)->count++] = (item);                                         \
     } while (0)
 #define COROUTINE_UNREACHABLE(message) do { fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message); abort(); } while(0)
+void __attribute__((naked)) coroutine_restore_context(void *rsp);
 
 Stack *coroutine_init(void)
 {
@@ -39,24 +40,6 @@ void coroutine_deinit(Stack *stack)
     free(stack);
 }
 
-void __attribute__((naked)) coroutine_restore_context(void *rsp)
-{
-    // @arch
-    (void)rsp;
-    asm(
-    "    movq %rcx, %rsp\n"
-    "    popq %r15\n"
-    "    popq %r14\n"
-    "    popq %r13\n"
-    "    popq %r12\n"
-    "    popq %rbx\n"
-    "    popq %rbp\n"
-    "    popq %rsi\n"
-    "    popq %rdi\n"
-    "    popq %rdx\n"
-    "    popq %rcx\n"
-    "    ret\n");
-}
 
 void coroutine_pop_frame(Stack *stack, void *rsp)
 {
@@ -81,7 +64,7 @@ Coroutine *coroutine_create(Stack *stack, void (*f)(Stack*, void*), void *arg)
 {
     Coroutine *c = malloc(sizeof(*c));
     memset(c, 0, sizeof(*c));
-    c->stack_base = VirtualAlloc(NULL, STACK_CAPACITY, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    c->stack_base = VirtualAlloc(NULL, STACK_CAPACITY + 1024, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE) + 1024; // guard page
     assert(c->stack_base != NULL);
     void **rsp = (void**)((char*)c->stack_base + STACK_CAPACITY);
     // @arch
@@ -109,6 +92,34 @@ void coroutine_destroy(Coroutine *c)
     free(c);
 }
 
+void coroutine_push_frame(Stack *stack, Coroutine *c, void *rsp)
+{
+    assert(stack->count > 0);
+    stack->items[stack->count - 1]->rsp = rsp;
+
+    coroutine_da_append(stack, c);
+    coroutine_restore_context(c->rsp);
+}
+
+void __attribute__((naked)) coroutine_restore_context(void *rsp)
+{
+    // @arch
+    (void)rsp;
+    asm(
+    "    movq %rcx, %rsp\n"
+    "    popq %r15\n"
+    "    popq %r14\n"
+    "    popq %r13\n"
+    "    popq %r12\n"
+    "    popq %rbx\n"
+    "    popq %rbp\n"
+    "    popq %rsi\n"
+    "    popq %rdi\n"
+    "    popq %rdx\n"
+    "    popq %rcx\n"
+    "    ret\n");
+}
+
 void __attribute__((naked)) coroutine_resume(Stack *stack, Coroutine *c)
 {
     (void) stack;
@@ -127,15 +138,6 @@ void __attribute__((naked)) coroutine_resume(Stack *stack, Coroutine *c)
     "    pushq %r15\n"
     "    movq %rsp, %r8\n"
     "    jmp coroutine_push_frame\n");
-}
-
-void coroutine_push_frame(Stack *stack, Coroutine *c, void *rsp)
-{
-    assert(stack->count > 0);
-    stack->items[stack->count - 1]->rsp = rsp;
-
-    coroutine_da_append(stack, c);
-    coroutine_restore_context(c->rsp);
 }
 
 void __attribute__((naked)) coroutine_yield(Stack *stack)
