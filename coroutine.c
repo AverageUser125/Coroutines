@@ -64,6 +64,7 @@ Coroutine *coroutine_create(Stack *stack, void (*f)(Stack*, void*), void *arg)
 {
     Coroutine *c = malloc(sizeof(*c));
     memset(c, 0, sizeof(*c));
+    // FIXME: Windows has 32-byte shadow space for callees, and I can't be bothred to account for that, so just a guard page works
     c->stack_base = VirtualAlloc(NULL, STACK_CAPACITY + 1024, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE) + 1024; // guard page
     assert(c->stack_base != NULL);
     void **rsp = (void**)((char*)c->stack_base + STACK_CAPACITY);
